@@ -10,6 +10,7 @@ import com.coloryr.allmusic.server.core.objs.music.SearchPageObj;
 import com.coloryr.allmusic.server.core.objs.music.SongInfoObj;
 import com.coloryr.allmusic.server.core.saves.MusicListSave;
 import com.coloryr.allmusic.server.core.utils.Function;
+import netapi.obj.ConfigObj;
 import netapi.obj.music.info.InfoObj;
 import netapi.obj.music.list.DataObj;
 import netapi.obj.music.lyric.WLyricObj;
@@ -19,12 +20,18 @@ import netapi.obj.music.trialinfo.TrialInfoObj;
 import netapi.obj.program.info.PrInfoObj;
 import com.google.gson.JsonObject;
 
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 
 public class NetiApiMain implements IMusicApi {
 
     private boolean isUpdate;
+
+    private File configFile;
+    private ConfigObj config;
 
     public NetiApiMain() {
         AllMusic.log.data("<light_purple>[AllMusic3]<yellow>正在初始化网络爬虫");
@@ -63,6 +70,16 @@ public class NetiApiMain implements IMusicApi {
         return Function.isInteger(id);
     }
 
+    @Override
+    public void command(Object sender, String s, String[] strings) {
+
+    }
+
+    @Override
+    public List<String> tab(Object sender, String s, String[] strings) {
+        return new ArrayList();
+    }
+
     /**
      * 获取音乐详情
      *
@@ -98,6 +115,37 @@ public class NetiApiMain implements IMusicApi {
             }
         }
         return null;
+    }
+
+    @Override
+    public void reload(File file) {
+        configFile = new File(file, "netapi.json");
+
+        if (configFile.exists()) {
+            try {
+                InputStreamReader reader = new InputStreamReader(
+                        Files.newInputStream(configFile.toPath()), StandardCharsets.UTF_8);
+                BufferedReader bf = new BufferedReader(reader);
+                config = AllMusic.gson.fromJson(bf, ConfigObj.class);
+                bf.close();
+                reader.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        } else {
+            config = ConfigObj.make();
+            try {
+                String data = AllMusic.gson.toJson(config);
+                FileOutputStream out = new FileOutputStream(configFile);
+                OutputStreamWriter write = new OutputStreamWriter(
+                        out, StandardCharsets.UTF_8);
+                write.write(data);
+                write.close();
+                out.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     @Override
@@ -142,8 +190,16 @@ public class NetiApiMain implements IMusicApi {
     public String getPlayUrl(String id) {
         JsonObject params = new JsonObject();
         params.addProperty("ids", "[" + id + "]");
-        params.addProperty("level", "exhigh");
-        params.addProperty("encodeType", "aac");
+        if (config.level != null) {
+            params.addProperty("level", config.level);
+        } else {
+            params.addProperty("level", "exhigh");
+        }
+        if (config.encodeType != null) {
+            params.addProperty("encodeType", config.encodeType);
+        } else {
+            params.addProperty("encodeType", "aac");
+        }
         HttpResObj res = NetApiHttpClient.post("https://music.163.com/weapi/song/enhance/player/url/v1", params, EncryptType.WEAPI, null);
         if (res != null && res.ok) {
             try {
@@ -236,16 +292,15 @@ public class NetiApiMain implements IMusicApi {
     /**
      * 搜歌
      *
-     * @param name      关键字
-     * @param isDefault 是否是默认方式
+     * @param name 关键字
      * @return 结果
      */
-    public SearchPageObj search(String[] name, boolean isDefault) {
+    public SearchPageObj search(String[] name) {
         List<SearchMusicObj> resData = new ArrayList<>();
         int maxpage;
 
         StringBuilder name1 = new StringBuilder();
-        for (int a = isDefault ? 0 : 1; a < name.length; a++) {
+        for (int a = 0; a < name.length; a++) {
             name1.append(name[a]).append(" ");
         }
         String MusicName = name1.toString();
